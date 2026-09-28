@@ -161,6 +161,21 @@ def test_timeout_is_sanitized() -> None:
     assert "secret diagnostic" not in str(error.value)
 
 
+def test_transport_retries_transient_provider_responses() -> None:
+    calls: list[int] = []
+    waits: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        calls.append(1)
+        return httpx.Response(503 if len(calls) < 3 else 200, json={"ok": True})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        assert HTTPTransport(10, http, waits.append).post("https://example.test", {}, {}) == {"ok": True}
+    assert len(calls) == 3
+    assert waits == [1.0, 2.0]
+
+
 def test_gemini_missing_candidate_is_safe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GEMINI_API_KEY", "test-only-value")
     with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}))) as http:
