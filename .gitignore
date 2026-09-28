@@ -33,3 +33,11 @@ dist/
 .idea/
 .vscode/
 .DS_Store
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+config.yaml
+data/
+logs/
