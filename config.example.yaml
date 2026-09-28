@@ -1,0 +1,42 @@
+# Copy to config.yaml. Set llm.model and the Ollama endpoint or cloud key environment.
+# No API key, password or token belongs in this file.
+llm:
+  provider: ollama
+  model: ""
+  base_url: ""
+  api_key_env: ""
+  temperature: 0.8
+  timeout_sec: 45.0
+  max_history_turns: 12
+  max_context_chars: 48000
+  max_output_tokens: 2048
+  max_tool_rounds: 4
+  max_tool_calls: 8
+  system_prompt: ""
+search_enabled: false
+stt:
+  model_size: small
+  device: cpu
+  compute_type: int8
+  language: es
+tts:
+  voice: es-AR-ElenaNeural
+  speed: 1.0
+  volume: 100
+  sample_rate: 24000
+audio:
+  input_device: null
+  output_device: null
+  sample_rate: 16000
+  max_recording_sec: 30
+avatar:
+  enabled: false
+  host: ""
+  port: 8001
+hotkey: f9
+memory_path: data/alicia_memory.db
+# Add absolute executable paths as lists using the GUI; never command strings.
+apps: {}
+logging:
+  level: INFO
+  file: logs/alicia.log

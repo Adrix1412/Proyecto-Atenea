@@ -1,0 +1,49 @@
+name: Verify Alicia
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  core-minimal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-core.txt
+      - run: python -c "import alicia_core, sys; assert 'alicia_desktop' not in sys.modules"
+      - run: python -c "import importlib.util; assert importlib.util.find_spec('PySide6') is None"
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: alicia_ci
+          POSTGRES_USER: alicia_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -q
+      - run: pytest -q tests/test_django.py
+        env:
+          ALICIA_TEST_POSTGRES: "1"
+          PGDATABASE: alicia_ci
+          PGUSER: alicia_ci
+          PGPASSWORD: ""
+          PGHOST: 127.0.0.1
+          PGPORT: "5432"
+      - run: mypy alicia_core
+      - run: python -m django makemigrations --check --dry-run --settings=tests.settings

@@ -1,0 +1,15 @@
+# Use a separate config for Django; desktop configuration is deliberately rejected.
+llm:
+  provider: ollama
+  model: ""
+  base_url: ""
+  api_key_env: ""
+  temperature: 0.8
+  timeout_sec: 45.0
+  max_history_turns: 12
+  max_context_chars: 48000
+  max_output_tokens: 2048
+  max_tool_rounds: 4
+  max_tool_calls: 8
+  system_prompt: ""
+search_enabled: false
