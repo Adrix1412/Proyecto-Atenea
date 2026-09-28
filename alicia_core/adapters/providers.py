@@ -76,6 +76,19 @@ class ProviderCodec:
                 payload,
                 {"x-api-key": cfg.key(), "anthropic-version": "2023-06-01"},
             )
+        if cfg.gemini_api == "interactions":
+            if tools:
+                raise ProviderError("Gemini Interactions aún no admite herramientas locales en esta versión.")
+            transcript = "\n\n".join(
+                f"{'Alicia' if item.get('role') == 'model' else 'Usuario'}: "
+                + "".join(string(obj(part).get("text")) for part in items(item.get("parts")))
+                for item in messages
+            )
+            return (
+                "https://generativelanguage.googleapis.com/v1beta2/interactions",
+                {"model": cfg.model, "input": f"Instrucciones del sistema:\n{prompt}\n\n{transcript}"},
+                {"x-goog-api-key": cfg.key()},
+            )
         payload = {
             "contents": messages,
             "systemInstruction": {"parts": [{"text": prompt}]},
@@ -116,6 +129,17 @@ class ProviderCodec:
                     calls.append(Call(string(b.get("name")), obj(b.get("input")), string(b.get("id"))))
             text = "".join(string(b.get("text")) for b in blocks if b.get("type") == "text")
             return Completion(text, tuple(calls), {"role": "assistant", "content": blocks})
+        if self.cfg.gemini_api == "interactions":
+            if data.get("status") != "completed":
+                raise ProviderError("Gemini no completó la interacción.")
+            text = "".join(
+                string(obj(content).get("text"))
+                for step in items(data.get("steps"))
+                if obj(step).get("type") == "model_output"
+                for content in items(obj(step).get("content"))
+                if obj(content).get("type") == "text"
+            )
+            return Completion(text, (), data)
         candidates = items(data.get("candidates", []))
         if not candidates:
             raise ProviderError("Gemini no devolvió candidatos; revise las restricciones del modelo.")

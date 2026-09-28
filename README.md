@@ -14,6 +14,20 @@ py -3.12 -m venv .venv
 Copy-Item config.example.yaml config.yaml
 ```
 
+Para instalar y verificar el entorno con un único comando, abre PowerShell en la raíz del proyecto y ejecuta:
+
+```powershell
+.\scripts\setup_windows.ps1
+```
+
+Si una instalación anterior quedó dañada, recrea únicamente el entorno virtual:
+
+```powershell
+.\scripts\setup_windows.ps1 -RecreateVenv
+```
+
+El script exige Python 3.12, comprueba que la GUI puede importarse y crea `config.yaml` solo si no existe. No inicia la aplicación ni guarda claves.
+
 Instala FFmpeg mediante un distribuidor confiable y comprueba `ffmpeg -version`. En Linux, necesitas además PortAudio del sistema; `pynput` requiere una sesión gráfica compatible. No ejecutes Alicia como administrador ni root.
 
 Edita `config.yaml`:
@@ -22,6 +36,7 @@ Edita `config.yaml`:
 - `llm.model`: identificador real disponible en tu proveedor. No se adivina ni se fija un modelo posiblemente inexistente.
 - Para Ollama: `llm.base_url` es el origen de tu servidor, sin `/api/chat`. HTTPS para servidores remotos; HTTP se admite solo en loopback explícito.
 - Para Anthropic/Gemini: deja `base_url` vacío. Define `ANTHROPIC_API_KEY`/`GEMINI_API_KEY` en el entorno del proceso. `api_key_env` permite cambiar **el nombre** de la variable, nunca contiene la clave.
+- Para modelos Gemini actuales, usa `llm.gemini_api: interactions`. Este modo usa `v1beta2/interactions` y por ahora solo admite conversación de texto; no habilites búsqueda ni aplicaciones en el catálogo hasta completar el protocolo de herramientas de esa API.
 - `search_enabled: true` habilita búsqueda; esta envía la consulta a servicios externos.
 - `avatar.enabled: true` necesita una dirección IP loopback en `avatar.host` y la API activa en VTube Studio. El token se guarda fuera del repositorio, en datos del usuario.
 

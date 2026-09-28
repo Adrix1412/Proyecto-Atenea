@@ -21,6 +21,7 @@ class LLMConfig(StrictModel):
     model: str = Field(default="", max_length=150)
     base_url: str = ""
     api_key_env: str = ""
+    gemini_api: Literal["generate_content", "interactions"] = "generate_content"
     temperature: float = Field(default=0.8, ge=0, le=1)
     timeout_sec: float = Field(default=45.0, ge=1, le=180)
     max_history_turns: int = Field(default=12, ge=1, le=50)
@@ -68,6 +69,8 @@ class LLMConfig(StrictModel):
     def provider_endpoint(self) -> "LLMConfig":
         if self.provider != "ollama" and self.base_url:
             raise ValueError("Las APIs cloud usan endpoints fijos; omita base_url.")
+        if self.provider != "gemini" and self.gemini_api != "generate_content":
+            raise ValueError("gemini_api solo se admite con Gemini.")
         return self
 
     def key(self) -> str:

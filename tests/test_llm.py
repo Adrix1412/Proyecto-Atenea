@@ -168,3 +168,29 @@ def test_gemini_missing_candidate_is_safe(monkeypatch: pytest.MonkeyPatch) -> No
             LLMClient(LLMConfig(provider="gemini", model="fixture"), transport=HTTPTransport(10, http)).chat(
                 (), "hola"
             )
+
+
+def test_gemini_interactions_text_conversation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only-value")
+    received: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        received.append(json.loads(request.content))
+        assert request.url.path == "/v1beta2/interactions"
+        return httpx.Response(
+            200,
+            json={
+                "id": "int-fixture",
+                "status": "completed",
+                "steps": [
+                    {"type": "user_input", "status": "done", "content": [{"type": "text", "text": "hola"}]},
+                    {"type": "model_output", "status": "done", "content": [{"type": "text", "text": "Hola"}]},
+                ],
+            },
+        )
+
+    cfg = LLMConfig(provider="gemini", model="gemini-3.8-flash", gemini_api="interactions")
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        assert LLMClient(cfg, transport=HTTPTransport(10, http)).chat((), "hola") == "Hola"
+    assert received[0]["model"] == "gemini-3.8-flash"
+    assert "Instrucciones del sistema" in str(received[0]["input"])
