@@ -86,7 +86,15 @@ class ProviderCodec:
             )
             return (
                 "https://generativelanguage.googleapis.com/v1beta/interactions",
-                {"model": cfg.model, "input": f"Instrucciones del sistema:\n{prompt}\n\n{transcript}"},
+                {
+                    "model": cfg.model,
+                    "input": transcript,
+                    "system_instruction": prompt,
+                    "generation_config": {
+                        "temperature": cfg.temperature,
+                        "max_output_tokens": cfg.max_output_tokens,
+                    },
+                },
                 {"x-goog-api-key": cfg.key()},
             )
         payload = {

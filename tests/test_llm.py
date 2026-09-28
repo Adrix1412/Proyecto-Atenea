@@ -193,4 +193,5 @@ def test_gemini_interactions_text_conversation(monkeypatch: pytest.MonkeyPatch) 
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
         assert LLMClient(cfg, transport=HTTPTransport(10, http)).chat((), "hola") == "Hola"
     assert received[0]["model"] == "gemini-3.8-flash"
-    assert "Instrucciones del sistema" in str(received[0]["input"])
+    assert received[0]["input"].endswith("Usuario: hola")
+    assert "Alicia" in str(received[0]["system_instruction"])
