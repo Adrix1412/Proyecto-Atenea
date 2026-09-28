@@ -85,7 +85,7 @@ class ProviderCodec:
                 for item in messages
             )
             return (
-                "https://generativelanguage.googleapis.com/v1beta2/interactions",
+                "https://generativelanguage.googleapis.com/v1beta/interactions",
                 {"model": cfg.model, "input": f"Instrucciones del sistema:\n{prompt}\n\n{transcript}"},
                 {"x-goog-api-key": cfg.key()},
             )

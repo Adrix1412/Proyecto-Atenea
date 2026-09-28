@@ -176,7 +176,7 @@ def test_gemini_interactions_text_conversation(monkeypatch: pytest.MonkeyPatch) 
 
     def handler(request: httpx.Request) -> httpx.Response:
         received.append(json.loads(request.content))
-        assert request.url.path == "/v1beta2/interactions"
+        assert request.url.path == "/v1beta/interactions"
         return httpx.Response(
             200,
             json={
