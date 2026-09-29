@@ -13,6 +13,10 @@ class ProviderError(AliciaError):
     """Unavailable provider or invalid remote response."""
 
 
+class ProviderUnavailableError(ProviderError):
+    """Transient provider failure for which a safe fallback may be attempted."""
+
+
 class StorageError(AliciaError):
     """Persistence operation failed."""
 

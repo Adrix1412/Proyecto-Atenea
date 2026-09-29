@@ -12,4 +12,5 @@ llm:
   max_tool_rounds: 4
   max_tool_calls: 8
   system_prompt: ""
+  fallbacks: []
 search_enabled: false

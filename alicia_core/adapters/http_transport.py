@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 import httpx
 
-from alicia_core.errors import ProviderError
+from alicia_core.errors import ProviderError, ProviderUnavailableError
 from alicia_core.jsonutil import obj
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,8 @@ class HTTPTransport:
                     retryable = response.status_code in (429, 503)
                     if not retryable or attempt == 2:
                         logger.warning("provider_http_error status=%d", response.status_code)
+                        if retryable:
+                            raise ProviderUnavailableError("El proveedor no está disponible temporalmente.")
                         raise ProviderError(
                             "El proveedor rechazó la solicitud. Revise modelo, credenciales y cuota."
                         )
@@ -48,9 +50,9 @@ class HTTPTransport:
                 self._sleeper(delay)
             raise AssertionError("Bucle de reintento terminado sin resultado.")
         except httpx.TimeoutException as exc:
-            raise ProviderError("El proveedor agotó el tiempo de espera.") from exc
+            raise ProviderUnavailableError("El proveedor agotó el tiempo de espera.") from exc
         except (httpx.HTTPError, ValueError, UnicodeError) as exc:
-            raise ProviderError("No se pudo obtener una respuesta válida del proveedor.") from exc
+            raise ProviderUnavailableError("No se pudo contactar al proveedor.") from exc
 
     @staticmethod
     def _retry_delay(value: str | None, attempt: int) -> float:

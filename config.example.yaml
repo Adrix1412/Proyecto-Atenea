@@ -15,6 +15,21 @@ llm:
   max_tool_rounds: 4
   max_tool_calls: 8
   system_prompt: ""
+  # Se prueban en orden solo ante 429, 503, timeout o error de red.
+  # No agregue claves aquí; use variables de entorno para cada proveedor.
+  fallbacks:
+    - provider: groq
+      model: "llama-3.3-70b-versatile"
+      base_url: ""
+      api_key_env: "GROQ_API_KEY"
+    - provider: openrouter
+      model: "openrouter/free"
+      base_url: ""
+      api_key_env: "OPENROUTER_API_KEY"
+    - provider: ollama
+      model: "qwen3:8b"
+      base_url: "http://127.0.0.1:11434"
+      api_key_env: ""
 search_enabled: false
 stt:
   model_size: small

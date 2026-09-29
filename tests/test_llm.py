@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from alicia_core.adapters.http_transport import HTTPTransport
-from alicia_core.config import LLMConfig
+from alicia_core.config import LLMConfig, LLMFallbackConfig
 from alicia_core.domain import Message
 from alicia_core.errors import ProviderError
 from alicia_core.llm import LLMClient
@@ -210,3 +210,30 @@ def test_gemini_interactions_text_conversation(monkeypatch: pytest.MonkeyPatch) 
     assert received[0]["model"] == "gemini-3.8-flash"
     assert received[0]["input"].endswith("Usuario: hola")
     assert "Alicia" in str(received[0]["system_instruction"])
+
+
+def test_transient_gemini_failure_uses_configured_groq_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
+    monkeypatch.setenv("GROQ_API_KEY", "groq-test-key")
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.host or "")
+        if request.url.host == "generativelanguage.googleapis.com":
+            return httpx.Response(503, json={"error": {"message": "busy"}})
+        assert request.url.host == "api.groq.com"
+        assert request.headers["authorization"] == "Bearer groq-test-key"
+        payload = json.loads(request.content)
+        assert payload["model"] == "llama-3.3-70b-versatile"
+        return httpx.Response(200, json={"choices": [{"message": {"content": "Respaldo listo"}}]})
+
+    cfg = LLMConfig(
+        provider="gemini",
+        model="gemini-3.5-flash",
+        gemini_api="interactions",
+        fallbacks=(LLMFallbackConfig(provider="groq", model="llama-3.3-70b-versatile"),),
+    )
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        client = LLMClient(cfg, transport=HTTPTransport(10, http, lambda _: None))
+        assert client.chat((), "hola") == "Respaldo listo"
+    assert requests == ["generativelanguage.googleapis.com"] * 3 + ["api.groq.com"]

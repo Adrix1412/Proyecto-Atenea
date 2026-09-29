@@ -16,8 +16,81 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
 
+ProviderName = Literal["ollama", "anthropic", "gemini", "groq", "openrouter"]
+
+
+def _validate_endpoint(value: str) -> str:
+    if not value:
+        return value
+    u = urlsplit(value)
+    if (
+        u.scheme not in ("http", "https")
+        or not u.hostname
+        or u.username
+        or u.password
+        or u.query
+        or u.fragment
+        or u.path not in ("", "/")
+    ):
+        raise ValueError("Endpoint inválido.")
+    if u.scheme == "http" and u.hostname not in ("127.0.0.1", "::1", "localhost"):
+        raise ValueError("Los endpoints remotos requieren HTTPS.")
+    return value.rstrip("/")
+
+
+def _validate_provider_endpoint(provider: ProviderName, base_url: str, gemini_api: str) -> None:
+    if provider != "ollama" and base_url:
+        raise ValueError("Las APIs cloud usan endpoints fijos; omita base_url.")
+    if provider != "gemini" and gemini_api != "generate_content":
+        raise ValueError("gemini_api solo se admite con Gemini.")
+
+
+class LLMFallbackConfig(StrictModel):
+    provider: ProviderName
+    model: str = Field(max_length=150)
+    base_url: str = ""
+    api_key_env: str = ""
+    gemini_api: Literal["generate_content", "interactions"] = "generate_content"
+
+    @field_validator("model")
+    @classmethod
+    def model_identifier(cls, value: str) -> str:
+        if not re.fullmatch(r"[A-Za-z0-9_.:/-]+", value):
+            raise ValueError("Identificador de modelo inválido.")
+        return value
+
+    @field_validator("api_key_env")
+    @classmethod
+    def env_name(cls, value: str) -> str:
+        if value and not re.fullmatch(r"[A-Z][A-Z0-9_]*", value):
+            raise ValueError("Nombre de variable de entorno inválido.")
+        return value
+
+    @field_validator("base_url")
+    @classmethod
+    def endpoint(cls, value: str) -> str:
+        return _validate_endpoint(value)
+
+    @model_validator(mode="after")
+    def provider_endpoint(self) -> "LLMFallbackConfig":
+        _validate_provider_endpoint(self.provider, self.base_url, self.gemini_api)
+        return self
+
+    def to_llm_config(self, primary: "LLMConfig") -> "LLMConfig":
+        return primary.model_copy(
+            update={
+                "provider": self.provider,
+                "model": self.model,
+                "base_url": self.base_url,
+                "api_key_env": self.api_key_env,
+                "gemini_api": self.gemini_api,
+                "fallbacks": (),
+            }
+        )
+
+
 class LLMConfig(StrictModel):
-    provider: Literal["ollama", "anthropic", "gemini"] = "ollama"
+    provider: ProviderName = "ollama"
     model: str = Field(default="", max_length=150)
     base_url: str = ""
     api_key_env: str = ""
@@ -30,6 +103,12 @@ class LLMConfig(StrictModel):
     max_tool_rounds: int = Field(default=4, ge=0, le=6)
     max_tool_calls: int = Field(default=8, ge=0, le=16)
     system_prompt: str = Field(default="", max_length=12000)
+    fallbacks: tuple[LLMFallbackConfig, ...] = Field(default=(), max_length=3)
+
+    @field_validator("fallbacks", mode="before")
+    @classmethod
+    def fallback_tuple(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
 
     @field_validator("model")
     @classmethod
@@ -48,35 +127,24 @@ class LLMConfig(StrictModel):
     @field_validator("base_url")
     @classmethod
     def endpoint(cls, value: str) -> str:
-        if not value:
-            return value
-        u = urlsplit(value)
-        if (
-            u.scheme not in ("http", "https")
-            or not u.hostname
-            or u.username
-            or u.password
-            or u.query
-            or u.fragment
-            or u.path not in ("", "/")
-        ):
-            raise ValueError("Endpoint inválido.")
-        if u.scheme == "http" and u.hostname not in ("127.0.0.1", "::1", "localhost"):
-            raise ValueError("Los endpoints remotos requieren HTTPS.")
-        return value.rstrip("/")
+        return _validate_endpoint(value)
 
     @model_validator(mode="after")
     def provider_endpoint(self) -> "LLMConfig":
-        if self.provider != "ollama" and self.base_url:
-            raise ValueError("Las APIs cloud usan endpoints fijos; omita base_url.")
-        if self.provider != "gemini" and self.gemini_api != "generate_content":
-            raise ValueError("gemini_api solo se admite con Gemini.")
+        _validate_provider_endpoint(self.provider, self.base_url, self.gemini_api)
+        if any(fallback.provider == self.provider for fallback in self.fallbacks):
+            raise ValueError("Un proveedor de respaldo no puede repetir el proveedor principal.")
+        if len({fallback.provider for fallback in self.fallbacks}) != len(self.fallbacks):
+            raise ValueError("No repita proveedores de respaldo.")
         return self
 
     def key(self) -> str:
-        name = self.api_key_env or {"anthropic": "ANTHROPIC_API_KEY", "gemini": "GEMINI_API_KEY"}.get(
-            self.provider, ""
-        )
+        name = self.api_key_env or {
+            "anthropic": "ANTHROPIC_API_KEY",
+            "gemini": "GEMINI_API_KEY",
+            "groq": "GROQ_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+        }.get(self.provider, "")
         value = os.environ.get(name, "").strip()
         if self.provider != "ollama" and not value:
             raise ConfigurationError(f"Falta la variable de entorno {name}.")

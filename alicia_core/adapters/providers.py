@@ -1,5 +1,6 @@
 """REST codecs keep provider-specific envelopes out of orchestration."""
 
+import json
 from dataclasses import dataclass
 from urllib.parse import quote
 
@@ -59,6 +60,28 @@ class ProviderCodec:
                     for t in tools
                 ]
             return cfg.base_url + "/api/chat", payload, {}
+        if cfg.provider in ("groq", "openrouter"):
+            payload = {
+                "model": cfg.model,
+                "messages": [{"role": "system", "content": prompt}, *messages],
+                "temperature": cfg.temperature,
+                "max_tokens": cfg.max_output_tokens,
+                "stream": False,
+            }
+            if tools:
+                payload["tools"] = [
+                    {
+                        "type": "function",
+                        "function": {"name": t.name, "description": t.description, "parameters": t.schema()},
+                    }
+                    for t in tools
+                ]
+            url = (
+                "https://api.groq.com/openai/v1/chat/completions"
+                if cfg.provider == "groq"
+                else "https://openrouter.ai/api/v1/chat/completions"
+            )
+            return url, payload, {"Authorization": "Bearer " + cfg.key()}
         if cfg.provider == "anthropic":
             payload = {
                 "model": cfg.model,
@@ -128,6 +151,20 @@ class ProviderCodec:
                 fn = obj(obj(value).get("function"))
                 calls.append(Call(string(fn.get("name")), obj(fn.get("arguments"))))
             return Completion(string(raw.get("content", "")), tuple(calls), raw)
+        if self.cfg.provider in ("groq", "openrouter"):
+            choices = items(data.get("choices"))
+            if not choices:
+                raise ProviderError("El proveedor no devolvió opciones de respuesta.")
+            raw = obj(obj(choices[0]).get("message"))
+            for value in items(raw.get("tool_calls", [])):
+                call = obj(value)
+                fn = obj(call.get("function"))
+                try:
+                    arguments = obj(json.loads(string(fn.get("arguments", "{}"))))
+                except json.JSONDecodeError as exc:
+                    raise ProviderError("El proveedor devolvió argumentos de herramienta inválidos.") from exc
+                calls.append(Call(string(fn.get("name")), arguments, string(call.get("id"))))
+            return Completion(string(raw.get("content", "")), tuple(calls), raw)
         if self.cfg.provider == "anthropic":
             if data.get("stop_reason") in ("max_tokens", "refusal"):
                 raise ProviderError("El proveedor no entregó una respuesta completa.")
@@ -171,6 +208,11 @@ class ProviderCodec:
         if self.cfg.provider == "ollama":
             messages.extend(
                 {"role": "tool", "tool_name": c.name, "content": r}
+                for c, r in zip(completion.calls, results, strict=True)
+            )
+        elif self.cfg.provider in ("groq", "openrouter"):
+            messages.extend(
+                {"role": "tool", "tool_call_id": c.identifier, "content": r}
                 for c, r in zip(completion.calls, results, strict=True)
             )
         elif self.cfg.provider == "anthropic":
