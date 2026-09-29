@@ -1,16 +1,43 @@
 """Provider contract tests use HTTP fixtures; no real API keys or network calls."""
 
 import json
+import sys
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
 from alicia_core.adapters.http_transport import HTTPTransport
+from alicia_core.adapters.search import web_search
 from alicia_core.config import LLMConfig, LLMFallbackConfig
 from alicia_core.domain import Message
 from alicia_core.errors import ProviderError
 from alicia_core.llm import LLMClient
 from alicia_core.tools import Tool, ToolRegistry
+
+
+def test_web_search_returns_numbered_diverse_sources(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeDDGS:
+        def __init__(self, timeout: int) -> None:
+            assert timeout == 10
+
+        def text(self, query: str, max_results: int) -> list[dict[str, str]]:
+            assert query == "Canserbero"
+            assert max_results == 4
+            return [
+                {"title": "No usar", "body": "dato", "href": "https://grokipedia.com/canserbero"},
+                {"title": "Wikipedia", "body": "dato 1", "href": "https://es.wikipedia.org/wiki/Canserbero"},
+                {"title": "Duplicado", "body": "dato 2", "href": "https://en.wikipedia.org/wiki/Canserbero"},
+                {"title": "Fuente dos", "body": "dato 3", "href": "https://example.org/perfil"},
+            ]
+
+    monkeypatch.setitem(sys.modules, "ddgs", SimpleNamespace(DDGS=FakeDDGS))
+    result = web_search("Canserbero")
+    assert "grokipedia" not in result
+    assert "[1] Wikipedia" in result
+    assert "[2] Fuente dos" in result
+    assert "[3]" not in result
+    assert "citá [n]" in result
 
 
 @pytest.mark.parametrize("provider", ["ollama", "anthropic", "gemini"])
