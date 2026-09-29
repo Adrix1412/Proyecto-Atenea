@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from alicia_core.adapters.sqlite_memory import SQLiteMemory
+from alicia_core.avatar_events import AvatarEventBus, AvatarEventType, AvatarPosition
 from alicia_core.config import load_core_config
 from alicia_core.domain import Message
 from alicia_core.errors import ConfigurationError, ConversationConflict, ProviderError, StorageError
@@ -41,6 +42,27 @@ def test_atomic_turn_and_order(tmp_path: Path) -> None:
         Message("assistant", "Respuesta verificable"),
     )
     assert repo.snapshot(1).revision == 1
+
+
+def test_avatar_events_are_versioned_and_do_not_interrupt_conversation(tmp_path: Path) -> None:
+    bus = AvatarEventBus()
+    received = []
+    bus.subscribe(received.append)
+    service = ConversationService(SQLiteMemory(tmp_path / "memory.db"), EchoClient(), avatar_events=bus)
+    assert service.reply("Hola") == "Respuesta verificable"
+    assert [item.sequence for item in received] == [1, 2]
+    assert [item.event.event_type for item in received] == [AvatarEventType.THINKING, AvatarEventType.IDLE]
+    assert all(item.event.version == 1 for item in received)
+
+
+def test_avatar_event_contract_rejects_renderer_specific_payloads() -> None:
+    bus = AvatarEventBus()
+    event = bus.emit(AvatarEventType.WALK_TO, position=AvatarPosition(x=0.25, y=0.75))
+    assert event.event.position == AvatarPosition(x=0.25, y=0.75)
+    with pytest.raises(ValueError):
+        bus.emit(AvatarEventType.WALK_TO)
+    with pytest.raises(ValueError):
+        bus.emit(AvatarEventType.EXPRESSION, expression="../unsafe")
 
 
 def test_database_failure_rolls_back_whole_turn(tmp_path: Path) -> None:
