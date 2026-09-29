@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 
 class HTTPTransport:
     def __init__(
-        self, timeout: float, client: httpx.Client | None = None, sleeper: Callable[[float], None] = time.sleep
+        self,
+        timeout: float,
+        client: httpx.Client | None = None,
+        sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
         self._owned = client is None
         self._sleeper = sleeper
@@ -37,7 +40,9 @@ class HTTPTransport:
                     retryable = response.status_code in (429, 503)
                     if not retryable or attempt == 2:
                         logger.warning("provider_http_error status=%d", response.status_code)
-                        raise ProviderError("El proveedor rechazó la solicitud. Revise modelo, credenciales y cuota.")
+                        raise ProviderError(
+                            "El proveedor rechazó la solicitud. Revise modelo, credenciales y cuota."
+                        )
                     delay = self._retry_delay(response.headers.get("retry-after"), attempt)
                 logger.info("provider_retry status=%d attempt=%d", response.status_code, attempt + 1)
                 self._sleeper(delay)
