@@ -237,3 +237,51 @@ def test_transient_gemini_failure_uses_configured_groq_fallback(monkeypatch: pyt
         client = LLMClient(cfg, transport=HTTPTransport(10, http, lambda _: None))
         assert client.chat((), "hola") == "Respaldo listo"
     assert requests == ["generativelanguage.googleapis.com"] * 3 + ["api.groq.com"]
+
+
+def test_gemini_interactions_is_skipped_when_tools_are_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
+    monkeypatch.setenv("GROQ_API_KEY", "groq-test-key")
+    requests: list[str] = []
+    executed: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.host or "")
+        assert request.url.host == "api.groq.com"
+        payload = json.loads(request.content)
+        assert payload["tools"][0]["function"]["name"] == "lookup"
+        if len(requests) == 1:
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "message": {
+                                "content": "",
+                                "tool_calls": [
+                                    {
+                                        "id": "call-1",
+                                        "function": {"name": "lookup", "arguments": '{"query":"hola"}'},
+                                    }
+                                ],
+                            }
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(200, json={"choices": [{"message": {"content": "Listo"}}]})
+
+    cfg = LLMConfig(
+        provider="gemini",
+        model="gemini-3.6-flash",
+        gemini_api="interactions",
+        fallbacks=(LLMFallbackConfig(provider="groq", model="openai/gpt-oss-120b"),),
+    )
+    registry = ToolRegistry(
+        (Tool("lookup", "Buscar", "query", lambda value: executed.append(value) or "dato"),)
+    )
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        client = LLMClient(cfg, registry, HTTPTransport(10, http))
+        assert client.chat((), "hola") == "Listo"
+    assert requests == ["api.groq.com", "api.groq.com"]
+    assert executed == ["hola"]

@@ -41,7 +41,12 @@ class LLMClient:
         user_message = validate_text(user_message)
         candidates = (self.cfg, *(fallback.to_llm_config(self.cfg) for fallback in self.cfg.fallbacks))
         failures: list[ProviderUnavailableError] = []
+        skipped_for_tools = False
         for index, config in enumerate(candidates):
+            if self.registry.tools and not self._supports_tools(config):
+                skipped_for_tools = True
+                logger.info("provider_fallback_skipped provider=%s reason=tools_unsupported", config.provider)
+                continue
             try:
                 config.ready()
                 return self._chat_with(config, history, user_message)
@@ -61,7 +66,14 @@ class LLMClient:
             raise ProviderError(
                 "Todos los proveedores configurados están temporalmente no disponibles."
             ) from failures[-1]
+        if skipped_for_tools:
+            raise ProviderError("No hay un proveedor configurado que admita las herramientas activas.")
         raise ProviderError("No hay un proveedor de respaldo utilizable.")
+
+    @staticmethod
+    def _supports_tools(config: LLMConfig) -> bool:
+        """Gemini Interactions currently exposes text turns only in this adapter."""
+        return config.provider != "gemini" or config.gemini_api != "interactions"
 
     def _chat_with(self, config: LLMConfig, history: tuple[Message, ...], user_message: str) -> str:
         prompt = self.cfg.system_prompt or DEFAULT_SYSTEM_PROMPT
